@@ -1,0 +1,142 @@
+---
+title: "pupil_patient"
+author: "Maitri Jain"
+date: "11/8/2021"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Packages
+```{r}
+library(tidyverse)
+library(dplyr)
+library(plyr)
+
+key = read_csv("GP_stimuli_order.csv")
+```
+
+# Functions for dilation
+```{r}
+
+## function to take valid data
+pupil_dil = function(dat) {
+  dat$average_diam[dat$CS == 1 | dat$CS == 2] - first(dat$average_diam)
+}
+
+##function for grouping and cleaning
+pupil_dilation_function = function(file_name) {
+  
+df = read_csv(file_name)
+##filtering out valid pupil data, and selecting required columns
+df_clean = df %>% filter(LPMMV ==1 | RPMMV == 1) %>% select(MEDIA_ID, CNT, CS, LPMM, LPMMV, RPMM, RPMMV)
+##calculating average pupil diameters
+df_clean = df_clean %>% mutate(
+  average_diam = case_when(
+    LPMMV == 1 & RPMMV ==1 ~ (LPMM+RPMM)/2,
+    LPMMV == 0 & RPMMV == 1 ~ RPMM,
+    LPMMV == 1 & RPMMV == 0 ~ LPMM
+  )
+)
+##calculate pupil dilation
+df_dil = df_clean %>% 
+  group_by(MEDIA_ID) %>% nest() %>%
+  mutate(dilation = purrr::map(data, ~pupil_dil(dat =.)))
+pupil_dilations_new = df_dil %>% select(MEDIA_ID, dilation) %>% mutate (user = file_name)
+##filtering required MEDIA IDs
+pupil_dilations_final = inner_join(pupil_dilations_new, key, by = "MEDIA_ID")
+return(pupil_dilations_final)
+}
+
+```
+
+# Repeat for all files
+```{r}
+##run on all participants
+p1 = pupil_dilation_function(file_name = "allgaze/PO01.csv")
+p2 = pupil_dilation_function(file_name = "allgaze/PO02.csv")
+p3 = pupil_dilation_function(file_name = "allgaze/PO03a.csv")
+p3_2 = pupil_dilation_function(file_name = "allgaze/PO03b.csv")
+p3_3 = pupil_dilation_function(file_name = "allgaze/PO03.csv")
+p4 = pupil_dilation_function(file_name = "allgaze/PO04.csv")
+p5 = pupil_dilation_function(file_name = "allgaze/PO05.csv")
+p6 = pupil_dilation_function(file_name = "allgaze/PO06.csv")
+p7 = pupil_dilation_function(file_name = "allgaze/PO07.csv")
+p8 = pupil_dilation_function(file_name = "allgaze/PO08.csv")
+p9 = pupil_dilation_function(file_name = "allgaze/PO09.csv")
+p10 = pupil_dilation_function(file_name = "allgaze/MS_Test_1.csv")
+p11 = pupil_dilation_function(file_name = "allgaze/MS_Test_2a.csv")
+p12 = pupil_dilation_function(file_name = "allgaze/MS_Test_2.csv")
+
+##bind all data
+data_dilations = rbind(p1, p2, p3, p3_2, p3_3, p4, p5, p6, p7, p8, p9, p10, p11, p12)
+```
+
+
+# Make data understandable
+```{r}
+##clean pupil dilation values
+list = map(data_dilations$dilation, 1)
+list[sapply(list, is.null)] <- NA
+list2 = unlist(list)
+data_dilations$dilations = list2
+data_dilations = data_dilations %>% select(-dilation)
+
+##clean participant name
+data_dilations$user <- str_replace(data_dilations$user, pattern = "allgaze/", replacement = "")
+data_dilations$user <- str_replace(data_dilations$user, pattern = "../data/", replacement = "")
+data_dilations$user <- str_replace(data_dilations$user, pattern = ".csv", replacement = "")
+data_dilations$user <- revalue(data_dilations$user, c("MS_Test_2a"="MS_Test_2"))
+data_dilations$user <- revalue(data_dilations$user, c("PO03a"="PO03"))
+data_dilations$user <- revalue(data_dilations$user, c("PO03b"="PO03"))
+
+## calculating percentage missing data
+
+
+missing_function = function (username) {
+  dataaa = data_dilations %>% filter(user == username)
+  missing = (sum(is.na(dataaa$dilations))/nrow(dataaa))*100
+  return(missing)
+}
+
+missing =  sapply(X = unique(data_dilations$user), FUN = missing_function)
+missing = as.data.frame(missing)
+
+total_missing = (sum(is.na(data_dilations$dilations))/nrow(data_dilations))*100
+
+missing_data = rbind(missing, total_missing)
+write.csv(x = missing_data, 'missing_patient_data.csv')
+
+##calculating average of trials
+
+data_dilations_clean = data_dilations %>% drop_na()
+dilations_grouped = data_dilations_clean %>% group_by(user, Category, Level, Orientation) %>% summarise_at(vars(dilations),             
+               list(Dilation = mean))
+
+##adding participant group
+dilations_grouped = dilations_grouped %>%  mutate(
+  group = case_when(
+    user == 'MS_Test_1' ~ 'HC',
+    user == 'MS_Test_2' ~ 'HC',
+    user == 'PO01' ~ 'SCZ',
+    user == 'PO02' ~ 'SPD',
+    user == 'PO03' ~ 'SCZ',
+    user == 'PO04' ~ 'SCZ',
+    user == 'PO05' ~ 'SPD',
+    user == 'PO06' ~ 'HC',
+    user == 'PO07' ~ 'HC',
+    user == 'PO08' ~ 'HC',
+    user == 'PO09' ~ 'SPD',
+  )
+)
+```
+
+# Export final data
+```{r}
+write.csv(dilations_grouped, "pupil_dilation_patient_2.csv")
+```

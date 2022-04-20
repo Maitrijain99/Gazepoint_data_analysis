@@ -1,0 +1,107 @@
+---
+title: "cleaning_gp_data"
+author: "Maitri Jain"
+date: "4/15/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Setting up R environment
+```{r}
+library(tidyverse)
+
+df1 = read_csv("allgaze/PO01.csv")
+df2 = read_csv("allgaze/PO02.csv")
+key = read_csv("GP_stimuli_order.csv")
+
+```
+
+# Cleaning and averaging data for RT and accuracy
+
+## Participant 1
+```{r}
+rt_func1 = function(dat) {
+  dat$`TIME(2021/04/07 12:20:25.358)`[dat$CS == 1 | dat$CS == 2]
+}
+
+acc_func = function(dat) {
+  dat$`CS`[dat$CS == 1 | dat$CS == 2]
+}
+
+df_clean1 = df1 %>% 
+  group_by(MEDIA_ID) %>% nest() %>%
+  mutate(RT = purrr::map(data, ~rt_func1(dat =.)),
+         keypress = purrr::map(data, ~acc_func(dat =.))) 
+
+df_new1 = df_clean1 %>% select(MEDIA_ID, RT, keypress) %>%
+  mutate(Subject = 'P1')
+```
+
+## Participant 2
+```{r}
+rt_func2 = function(dat) {
+  dat$`TIME(2021/04/08 14:26:48.840)`[dat$CS == 1 | dat$CS == 2]
+}
+
+df_clean2 = df2 %>% 
+  group_by(MEDIA_ID) %>% nest() %>%
+  mutate(RT = purrr::map(data, ~rt_func2(dat =.)),
+         keypress = purrr::map(data, ~acc_func(dat =.))) 
+
+df_new2 = df_clean2 %>% select(MEDIA_ID, RT, keypress) %>%
+  mutate(Subject = 'P2')
+```
+
+# Binding together and cleaning
+
+```{r}
+## bind
+df_all = rbind(df_new1, df_new2)
+
+##filtering required MEDIA IDs
+df_final = inner_join(df_all, key, by = "MEDIA_ID")
+
+##clean RT variable
+list = map(df_final$RT, 1)
+list[sapply(list, is.null)] <- NA
+list2 = unlist(list)
+df_final$RT_clean = list2
+df_final = df_final %>% select(-RT)
+
+##clean accuracy variable
+list3 = map(df_final$keypress, 1)
+list3[sapply(list3, is.null)] <- NA
+list4 = unlist(list3)
+df_final$keypress_clean = list4
+df_final = df_final %>% select(-keypress)
+
+# calculating accuracy, adding participant name
+df_final = df_final %>%
+  mutate(
+    Accuracy = case_when(
+      keypress_clean == 1 & Orientation == 'V' ~ 1,
+      keypress_clean == 1 & Orientation == 'H' ~ 0,
+      keypress_clean == 2 & Orientation == 'V' ~ 0,
+      keypress_clean == 2 & Orientation == 'H' ~ 1,
+    )
+  )
+```
+
+# Averaging
+```{r}
+df_av = df_final %>% drop_na()
+df_av = df_av %>% 
+  group_by(Subject, Category, Level, Orientation) %>%
+  summarize(RT = mean(RT_clean),
+            Accuracy = mean(Accuracy))
+
+write.csv(df_av, "RT&ACCdata.csv")
+```
+
+
+
+
+

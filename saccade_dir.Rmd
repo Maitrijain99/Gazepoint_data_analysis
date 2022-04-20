@@ -1,0 +1,101 @@
+---
+title: "gp"
+author: "Maitri Jain"
+date: "11/2/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Loading packages and data
+```{r}
+library(tidyverse)
+library(dplyr)
+
+source("sacc_dir_script.R")
+
+files = list.files(path = "gaze_data/", pattern = "*.csv", full.names = T)
+
+gaze_data <- sapply(files, read_csv, simplify=FALSE) %>%
+  bind_rows(.id = "id")
+
+write.csv(gaze_data, "gazedata.csv")
+
+gaze_data = read.csv("gazedata.csv")
+
+keys = read.csv("keys.csv")
+```
+
+# Adding media key
+```{r}
+keys = keys %>% rename('MEDIA_ID' = 'key')
+
+keys$MEDIA_ID = as.factor(keys$MEDIA_ID)
+gaze_data$MEDIA_ID =  as.factor(gaze_data$MEDIA_ID)
+
+sac_data <- inner_join(gaze_data, keys, by = "MEDIA_ID")
+sac_data = sac_data %>%
+  rename('Level' = 'Orientation',
+         'Orientation'  = 'Level')
+
+```
+
+# Finding saccade directions
+```{r}
+sac_data_nest = sac_data %>%
+  group_by(Type) %>% 
+  nest() %>%
+  mutate(saccades = purrr::map(data, ~sac(df = .)))
+
+sac_data_unnested = sac_data_nest %>% unnest(saccades)
+
+```
+
+
+## Averaging, grouping, graphs, etc.
+```{r}
+
+# numer of each type of saccade
+sac_data_unnested %>% group_by(Type) %>%
+  count(sacc_dir)
+
+sac_data_unnested %>% group_by(Level, sacc_dir) %>%
+  count(sacc_dir) 
+
+sac_data_unnested %>% group_by(Orientation) %>% filter(sacc_dir == 'Horizontal') %>%
+  count(sacc_dir) 
+
+
+sac_data_unnested %>% group_by(id) %>% summarize %>% count(sacc_dir)
+
+
+# Graphs
+by_level = sac_data_unnested %>% group_by(Level, sacc_dir) %>%
+  count(sacc_dir) %>% na.omit %>%
+  ggplot(aes(x = Level, y =n, group = sacc_dir)) +
+  geom_point(aes(color = sacc_dir)) +
+  geom_line(aes(color = sacc_dir))
+
+by_orient = sac_data_unnested %>% group_by(Orientation, sacc_dir) %>%
+  count(sacc_dir) %>% na.omit %>%
+  ggplot(aes(x = Orientation, y =n, group = sacc_dir)) +
+  geom_point(aes(color = sacc_dir)) +
+  geom_line(aes(color = sacc_dir))
+
+by_type = sac_data_unnested %>% group_by(Type, sacc_dir) %>%
+  count(sacc_dir) %>% na.omit %>%
+  ggplot(aes(x = Type, y =n, group = sacc_dir)) +
+  geom_point(aes(color = sacc_dir)) +
+  geom_line(aes(color = sacc_dir))
+
+```
+
+
+
+
+
+
+
+

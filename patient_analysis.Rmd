@@ -1,0 +1,110 @@
+---
+title: "patient_analysis"
+author: "Maitri Jain"
+date: "11/12/2021"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Packages and data
+```{r}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+patient_data = read_csv("pupil_dilation_patient.csv")
+head(patient_data)
+
+patient_data$Category = as.factor(patient_data$Category)
+patient_data$Level = as.factor(patient_data$Level)
+patient_data$Orientation = as.factor(patient_data$Orientation)
+patient_data$group = as.factor(patient_data$group)
+```
+
+# Division by group (all groups make less saccades than HC)
+```{r}
+
+patient_data_group = patient_data %>%
+  group_by(group) %>%
+  summarize_at(vars(Dilation), list(dilations = mean))
+
+plot_RT = ggplot(patient_data_group, aes(x = group, y = dilations)) +
+  geom_line(aes(group = dilations)) +
+  geom_point(aes(group = group))
+plot_RT
+
+patient_data$group = as.factor(patient_data$group)
+patient_data_scz = patient_data %>% mutate(group = relevel(group, ref = "SCZ"))
+
+# control as reference
+lm_group = lm(Dilation ~ group, patient_data)
+summary(lm_group)
+
+# SCZ as reference
+lm_group_scz = lm(Dilation ~ group, patient_data_scz)
+summary(lm_group_scz)
+
+# Plot
+group_plot = ggplot(data = patient_data, aes(x = group, y = Dilation)) +
+  geom_jitter ( height = 0, width = 0.2) +
+  stat_summary(fun.data = mean_cl_boot, aes(color = group))
+
+group_plot
+
+```
+
+# Division by Category (gabor less number  of saccades than color)
+```{r}
+lm_category  = lm(Dilation ~ Category, patient_data)
+summary(lm_category)
+
+category_plot = ggplot(data = patient_data, aes(x = Category, y = Dilation, fill = Category)) +
+  geom_boxplot()
+
+category_plot
+```
+
+# Division by Level (no difference)
+```{r}
+lm_level  = lm(Dilation ~ Level, patient_data)
+summary(lm_level)
+
+level_plot = ggplot(data = patient_data, aes(x = Level, y = Dilation)) +
+  geom_jitter ( height = 0, width = 0.2) +
+  stat_summary(fun.data = mean_cl_boot, aes(color = Level, geom = 'line'))
+  
+
+level_plot 
+```
+
+# Division by Orientation (no difference)
+```{r}
+lm_orientation  = lm(Dilation ~ Orientation, patient_data)
+summary(lm_orientation)
+
+orientation_plot = ggplot(data = patient_data, aes(x = Orientation, y = Dilation)) +
+  geom_jitter (height = 0, width = 0.2) +
+  stat_summary(fun.data = mean_cl_boot, aes(color = Orientation))
+
+orientation_plot
+```
+
+# Interaction between category and group (no interactions found, only SCZ group significant)
+```{r}
+lm_grp_cat = lm(Dilation ~ group*Category, patient_data)
+summary(lm_grp_cat)
+
+df_grp_cat = patient_data %>%
+  group_by(group, Category) %>%
+  summarize_at(vars(Dilation), list(Dilation_mean = mean))
+  
+plot_grp_cat = ggplot(patient_data, aes(x = Category, y = mean(Dilation))) +
+  geom_line(aes(color = group)) +
+  geom_point(aes(color = group))
+plot_grp_cat
+```
